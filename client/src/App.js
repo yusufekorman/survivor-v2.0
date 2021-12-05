@@ -293,7 +293,7 @@ class App extends Component {
   }
 
   start = async () => {
-    var socket = io('http://localhost:5000');
+    var socket = io('https://myreactapp7281.herokuapp.com/');
     socket.on('disconnect', () => {
       this.setState({isGameRunning: false});
       setTimeout(window.location.reload, 10000);
@@ -310,7 +310,7 @@ class App extends Component {
 
   loop = () => {
     requestAnimationFrame(() => {
-      const now = Date.now();
+      // const now = Date.now();
       // if (now - this.lastLoop > (1000 / 30)) {
       this.game.update();
       this.game.draw();
