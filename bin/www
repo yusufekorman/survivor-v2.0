@@ -1,0 +1,326 @@
+#!/usr/bin/env node
+
+/**
+ * Module dependencies.
+ */
+
+var app = require('../app');
+var debug = require('debug')('survivor:server');
+var http = require('http');
+var socketIO = require('socket.io');
+
+/**
+ * Get port from environment and store in Express.
+ */
+
+var port = normalizePort(process.env.PORT || '5000');
+console.log('PORT', port)
+app.set('port', port);
+
+/**
+ * Create HTTP server.
+ */
+
+var server = http.createServer(app);
+var io = socketIO(server);
+
+var Player = function(game, id) {
+  this.game = game;
+  this.id = id;
+  this.isDead = false;
+  this.name = '';
+  this.health = 100;
+  // pozisyon degerleri
+  this.x = Math.floor(Math.random() * 400 + 100);
+  this.y = Math.floor(Math.random() * 300 + 100);
+  this.targetX = this.x;
+  this.targetY = this.y;
+  this.dirx = 0;
+  this.diry = 0;
+  this.type = Math.floor(Math.random() * 3);
+
+  // oyun dinamikleri
+  this.inventory = []; 
+  /*
+  [
+    {
+      slug: "survivor:odun",
+      img_src: "./assets/inventory_images/0.png",
+      name: "Odun",
+      id: 0,
+      amount: (1 || 2 || 3)
+    }
+  ]
+  */
+
+  this.lastHealthReductionAt = Date.now();
+};
+
+// guncelleme ve ekrana yazdirma
+Player.prototype.update = function update() {
+  if (this.health < 0) {
+    this.isDead = true;
+  }
+
+  var targetX = this.targetX + this.dirx * 3;
+  var targetY = this.targetY + this.diry * 3;
+
+  if (this.game.getTile(targetX, targetY, 0) === 2) {
+    cut_tree(this.game, this, [targetX, targetY], (x,y) => {
+      this.game.layers[0][y][x] = 6;
+    });
+  }
+
+  if (this.game.getTile(targetX, targetY, 0) === 3) {
+    cut_tree(this.game, this, [targetX, targetY], (x,y) => {
+      this.game.layers[0][y][x] = 7;
+    });
+  }
+
+  if (this.game.getTile(targetX, targetY, 0) === 4) {
+    cut_tree(this.game, this, [targetX, targetY], (x,y) => {
+      this.game.layers[0][y][x] = 8;
+    });
+  }
+
+  if (this.game.getTile(targetX, targetY, 0) === 5) {
+    cut_tree(this.game, this, [targetX, targetY], (x,y) => {
+      this.game.layers[0][y][x] = 9;
+    });
+  }
+
+  function cut_tree(game, player,[x,y] , callback) {
+    const startTileX = Math.floor(x / 64);
+    const startTileY = Math.floor(y / 64);
+    callback(startTileX, startTileY);
+    io.sockets.emit('LAYER_UPDATE', { layers: game.layers });
+    // let amount = 1;
+
+    if (player.inventory.find(p => p.slug === "survivor:odun")) {
+      player.inventory[player.inventory.findIndex(p => p.slug === "survivor:odun")].amount+=1;
+    } else {
+      player.inventory.push({
+        slug: "survivor:odun",
+        img_src: "./assets/inventory_images/0.png",
+        name: "Odun",
+        id: 0,
+        amount: 1
+      });
+    }
+
+    
+  }
+
+  if (!this.game.isSolidTile(targetX, targetY)) {
+    this.targetX = targetX;
+    this.targetY = targetY;
+    this.x = this.x + (this.targetX - this.x) * 0.40;
+    this.y = this.y + (this.targetY - this.y) * 0.40;
+  }
+};
+
+var Game = function Game(){
+  console.log('init');
+  this.players = [];
+  this.layers = [
+    [
+      [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+      [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+      [1, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+      [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+      [1, 0, 0, 0, 1, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+      [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+      [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+      [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+      [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+      [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 6, 0, 0, 0, 0, 0, 1],
+      [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+      [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+    ]
+  ];
+
+  this.isStarted = false;
+  this.gameOver = false;
+  this.winnerId = null;
+}
+
+Game.prototype.isSolidTile = function isSolidTile (x, y) {
+  const startTileX = Math.floor(x / 64);
+  const startTileY = Math.floor(y / 64);
+  return this.layers[0][startTileY][startTileX] === 1;
+}
+
+Game.prototype.getTile = function getTile (x, y, layer = 0) {
+  const startTileX = Math.floor(x / 64);
+  const startTileY = Math.floor(y / 64);
+  return this.layers[layer][startTileY][startTileX];
+}
+
+Game.prototype.addPlayer = function addPlayer (id) {
+  this.players.push(new Player(this, id));
+}
+
+Game.prototype.update = function update() {
+  if (this.players.length === 2) {
+    this.isStarted = true;
+  }
+
+  if (!this.isStarted)
+    return;
+
+  const alivePlayerCount = this.players.filter(player => !player.isDead).length;
+  for (var m = 0; m < this.players.length; m++) {
+    const player = this.players[m];
+
+    if (alivePlayerCount === 1 && !player.isDead) {
+      this.winnerId = player.id;
+      this.gameOver = true;
+      this.gameEndedAt = Date.now();
+    }
+
+    if (!this.gameOver) {
+      player.update();
+    }
+  }
+
+  const now = Date.now();
+};
+
+var game = new Game();
+
+const interval = setInterval(() => {
+  if (game.gameOver && Date.now() - game.gameEndedAt > 10000) {
+    game = new Game();
+  } else if (game.players.length) {
+    game.update();
+  }
+}, 1000 / 60);
+
+const updateInterval = setInterval(() => {
+  io.sockets.emit('PLAYERS_UPDATE', game.players.map(player => ({
+    id: player.id,
+    name: player.name,
+    isDead: player.isDead,
+    health: player.health,
+    medkits: player.medkits,
+    x: player.x,
+    y: player.y,
+    type: player.type,
+    inventory: player.inventory
+  })));
+
+  if (game.gameOver) {
+    io.sockets.emit('GAME_STATE_UPDATE', {
+      gameOver: game.gameOver,
+      winnerId: game.winnerId,
+    });
+  }
+}, 1000 / 30);
+
+io.on('connection', function (socket) {
+  console.log('user connected! ' + socket.id);
+  if (!game.isStarted) {
+    game.addPlayer(socket.id);
+    console.log('number of players: ' + game.players.length);
+  } else {
+    socket.disconnect(true);
+  }
+
+  setInterval(() => {
+    if (game.gameOver) {
+      socket && socket.disconnect(true);
+    }
+  }, 1000);
+
+  socket.emit('LAYERS_UPDATE', game.layers);
+
+  socket.on('disconnect', function () {
+    // socket.emit('disconnected');
+    game.players = game.players.filter(player => player.id !== socket.id)
+    console.log('user disconnected! ' + socket.id);
+    console.log('number of players: ' + game.players.length);
+  });
+
+  socket.on('PLAYER_DIRECTION_UPDATE', function (data) {
+    const player = game.players.filter(player => player.id === socket.id)
+    if (data.dirx !== undefined)
+      player[0].dirx = data.dirx;
+
+    if (data.diry !== undefined)
+      player[0].diry = data.diry;
+  });
+
+  socket.on('PLAYER_NAME_UPDATE', function (data) {
+    const player = game.players.filter(player => player.id === socket.id)
+    player[0].name = data.name;
+  });
+});
+
+
+/**
+ * Listen on provided port, on all network interfaces.
+ */
+
+server.listen(port);
+server.on('error', onError);
+server.on('listening', onListening);
+
+/**
+ * Normalize a port into a number, string, or false.
+ */
+
+function normalizePort(val) {
+  var port = parseInt(val, 10);
+
+  if (isNaN(port)) {
+    // named pipe
+    return val;
+  }
+
+  if (port >= 0) {
+    // port number
+    return port;
+  }
+
+  return false;
+}
+
+/**
+ * Event listener for HTTP server "error" event.
+ */
+
+function onError(error) {
+  if (error.syscall !== 'listen') {
+    throw error;
+  }
+
+  var bind = typeof port === 'string'
+    ? 'Pipe ' + port
+    : 'Port ' + port;
+
+  // handle specific listen errors with friendly messages
+  switch (error.code) {
+    case 'EACCES':
+      console.error(bind + ' requires elevated privileges');
+      process.exit(1);
+      break;
+    case 'EADDRINUSE':
+      console.error(bind + ' is already in use');
+      process.exit(1);
+      break;
+    default:
+      throw error;
+  }
+}
+
+/**
+ * Event listener for HTTP server "listening" event.
+ */
+
+function onListening() {
+  var addr = server.address();
+  var bind = typeof addr === 'string'
+    ? 'pipe ' + addr
+    : 'port ' + addr.port;
+  debug('Listening on ' + bind);
+}
